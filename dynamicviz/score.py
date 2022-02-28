@@ -51,8 +51,6 @@ def stability (df, method="global", alpha=1.0, k=20, X_orig=None, neighborhoods=
     
     # set up neighborhoods for stability score
     neighborhood_dict = get_neighborhood_dict(method, k, keys=np.unique(df["original_index"]), neighborhoods=neighborhoods, X_orig=X_orig)
-    result = Parallel(n_jobs=4)(delayed(train_model)(X, y, seed) for seed in range(10))
-
     
     # populate distance dict
     dist_dict = populate_distance_dict(neighborhood_dict, embeddings, bootstrap_indices)
