@@ -10,6 +10,7 @@ from tqdm import tqdm
 from joblib import Parallel, delayed
 import warnings
 warnings.filterwarnings("ignore")
+import time
 
 
 
@@ -50,19 +51,34 @@ def stability (df, method="global", alpha=1.0, k=20, X_orig=None, neighborhoods=
         bootstrap_indices = [np.array(df[df["bootstrap_number"]==b]["original_index"].values) for b in np.unique(df["bootstrap_number"]) if b!=-1]
     
     # set up neighborhoods for stability score
+    print("Setting up neighborhoods...")
+    start_time = time.time()
     neighborhood_dict = get_neighborhood_dict(method, k, keys=np.unique(df["original_index"]), neighborhoods=neighborhoods, X_orig=X_orig)
+    print("--- %s seconds ---" % (time.time() - start_time))
     
     # populate distance dict
+    print("Populating distances...")
+    start_time = time.time()
     dist_dict = populate_distance_dict(neighborhood_dict, embeddings, bootstrap_indices)
+    print("--- %s seconds ---" % (time.time() - start_time))
     
     # compute mean pairwise distance for normalization
+    print("Computing mean pairwise distance for normalization...")
+    start_time = time.time()
     mean_pairwise_distance = compute_mean_distance(dist_dict, normalize_pairwise_distance)
+    print("--- %s seconds ---" % (time.time() - start_time))
 
     # compute variances
+    print("Computing variance scores...")
+    start_time = time.time()
     mean_variance_distances = compute_mean_variance_distance(dist_dict, normalize_pairwise_distance, mean_pairwise_distance)
+    print("--- %s seconds ---" % (time.time() - start_time))
 
     # compute stability score
+    print("Computing stability score with alpha="+str(alpha)+" ...")
+    start_time = time.time()
     stability_scores = 1 / (1 + mean_variance_distances)**alpha
+    print("--- %s seconds ---" % (time.time() - start_time))
     
     if return_variance is False:
         return(stability_scores)
@@ -126,16 +142,20 @@ def populate_distance_dict (neighborhood_dict, embeddings, bootstrap_indices):
             dist_dict[str(key1)][str(key2)] = []
             
     for b in range(len(embeddings)):
-        dist_mat = pairwise_distances(embeddings[b])
+        dist_mat = pairwise_distances(embeddings[b], n_jobs=-1)
         boot_idxs = bootstrap_indices[b]
         
         for i in range(dist_mat.shape[0]):
             key1 = str(boot_idxs[i])
             neighbor_js = neighborhood_dict[key1]
-            
-            for j in range(dist_mat.shape[1]):
-                key2 = str(boot_idxs[j])
-                if int(key2) in neighbor_js:
+            #for j in range(dist_mat.shape[1]):
+            #    key2 = str(boot_idxs[j])
+            #    if int(key2) in neighbor_js:
+            #        dist_dict[key1][key2].append(dist_mat[i,j])
+            for nj in neighbor_js:
+                key2 = str(nj)
+                js = [x[0] for x in np.argwhere(boot_idxs == nj)]
+                for j in js:
                     dist_dict[key1][key2].append(dist_mat[i,j])
 
     return(dist_dict)
