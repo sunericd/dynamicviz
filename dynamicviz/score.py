@@ -16,7 +16,7 @@ import time
 
 # Stability score
 def stability (df, method="global", alpha=1.0, k=20, X_orig=None, neighborhoods=None, normalize_pairwise_distance=False,
-                return_variance=False, include_original=True, num_jobs=None):
+                include_original=True, num_jobs=None):
     '''
     Takes df (output dataframe of boot.generate()) and computes stability scores:
     
@@ -31,7 +31,6 @@ def stability (df, method="global", alpha=1.0, k=20, X_orig=None, neighborhoods=
         k = int, when method="local"
         neighborhood = array or list of size n, with elements labeling neighborhoods
         normalize_pairwise_distance = if True, then divide each set of d[i,j] by its mean before computing variance
-        return_variance = if True, returns the mean pairwise variance instead of stability scores
         include_original = if True, include the original (bootstrap_number=-1) embedding in calculating scores
         num_jobs = None, -1, or >=1 int; if not None, runs multiprocessing with n_jobs, if n_jobs=-1, then uses all available
         
@@ -42,6 +41,36 @@ def stability (df, method="global", alpha=1.0, k=20, X_orig=None, neighborhoods=
     if alpha <= 0:
         raise Exception("alpha must be >= 0")
     
+    mean_variance_distances = variance(df, method=method, k=k, X_orig=X_orig, neighborhoods=neighborhoods,
+                                        normalize_pairwise_distance=normalize_pairwise_distance,
+                                        include_original=include_original, num_jobs=num_jobs)
+
+    # compute stability score
+    stability_scores = stability_from_variance(mean_variance_distances, alpha)
+    
+    return(stability_scores)
+
+
+def variance (df, method="global", k=20, X_orig=None, neighborhoods=None, normalize_pairwise_distance=False,
+                include_original=True, num_jobs=None):
+    '''
+    Takes df (output dataframe of boot.generate()) and computes variance scores:
+    
+    Arguments:
+        df = pandas dataframe, output of boot.generate()
+        method = str, specifies the type of stability score to compute
+            "global" - compute stability score across the entire dataset
+            "random" - approximate global stability score by randomly selecting k "neighbors" for each observation
+            "local" - compute stability over k-nearest neighbors (specify k, defaults to 20)
+        k = int, when method="local"
+        neighborhood = array or list of size n, with elements labeling neighborhoods
+        normalize_pairwise_distance = if True, then divide each set of d[i,j] by its mean before computing variance
+        include_original = if True, include the original (bootstrap_number=-1) embedding in calculating scores
+        num_jobs = None, -1, or >=1 int; if not None, runs multiprocessing with n_jobs, if n_jobs=-1, then uses all available
+        
+    Returns:
+        mean_variance_distances = numpy array with variance score (mean variance in pairwise distance to neighborhood) for each observation
+    '''
     # retrieve embeddings and bootstrap indices
     if include_original is True:
         embeddings = [np.array(df[df["bootstrap_number"]==b][["x1","x2"]].values) for b in np.unique(df["bootstrap_number"])]
@@ -50,7 +79,7 @@ def stability (df, method="global", alpha=1.0, k=20, X_orig=None, neighborhoods=
         embeddings = [np.array(df[df["bootstrap_number"]==b][["x1","x2"]].values) for b in np.unique(df["bootstrap_number"]) if b!=-1]
         bootstrap_indices = [np.array(df[df["bootstrap_number"]==b]["original_index"].values) for b in np.unique(df["bootstrap_number"]) if b!=-1]
     
-    # set up neighborhoods for stability score
+    # set up neighborhoods for variance score
     print("Setting up neighborhoods...")
     start_time = time.time()
     neighborhood_dict = get_neighborhood_dict(method, k, keys=np.unique(df["original_index"]), neighborhoods=neighborhoods, X_orig=X_orig)
@@ -73,17 +102,23 @@ def stability (df, method="global", alpha=1.0, k=20, X_orig=None, neighborhoods=
     start_time = time.time()
     mean_variance_distances = compute_mean_variance_distance(dist_dict, normalize_pairwise_distance, mean_pairwise_distance)
     print("--- %s seconds ---" % (time.time() - start_time))
+    
+    return(mean_variance_distances)
 
+
+def stability_from_variance(mean_variance_distances, alpha):
+    '''
+    For alpha and mean_variance_distances, computes stability scores
+    '''
     # compute stability score
     print("Computing stability score with alpha="+str(alpha)+" ...")
     start_time = time.time()
     stability_scores = 1 / (1 + mean_variance_distances)**alpha
     print("--- %s seconds ---" % (time.time() - start_time))
     
-    if return_variance is False:
-        return(stability_scores)
-    else:
-        return(mean_variance_distances)
+    return(stability_scores)
+
+
 
 
 #@njit(parallel=True)
