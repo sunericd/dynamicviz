@@ -1,3 +1,12 @@
+"""
+Dynamic visualization viewing modality module
+- Tools for creating different viewing modalities for the dynamic visualizations
+"""
+
+# author: Eric David Sun <edsun@stanford.edu>
+# (C) 2022 
+from __future__ import print_function, division
+
 import os
 import numpy as np
 import pandas as pd
@@ -10,17 +19,31 @@ import dash_html_components as html
 from dash.dependencies import Input, Output
 import plotly.express as px
 
+
+
 def interactive(df, label, show=False, save=False, colors=None,
             xlabel="x1", ylabel="x2", title="", legend_title="",
-            vmin=None, vmax=None, alpha=1.0, width=4, height=4, dpi=500):
+            vmin=None, vmax=None, alpha=1.0, width=4, height=4, dpi=500, dim=None):
     '''
-    Generate Plotly interactive visualization
+    Generate dynamic visualization with interactive (plotly) modality
     
     Arguments:
         df = pandas dataframe corresponding to output of boot.generate() 
-        label = str, column in output for labeling/coloring visualization
+        label = str or float, column in output for labeling/coloring visualization
         show = True or False, whether to show the visualization
         save = False or str, path to save the visualization (acceptable extensions are .html)
+        colors = list of plotly color codes to use if labels are discrete
+        xlabel = label of x-axis
+        ylabel = label of y-axis
+        title = title of plot
+        legend_title = title of legend
+        vmin = set value of vmin for continuous colorbar (default is min across all bootstrap frames)
+        vmax = set value of vmax for continuous colorbar (default is max across all bootstrap frames)
+        alpha = opacity between 0 and 1
+        width = width of plotly plot
+        height = height of plotly plot
+        dpi = dots per inch
+        dim = x and y dimensions will +- dim in either direction; default is to take the maximum across all frames
         
         will convert width, height, dpi into plotly.express.scatter() width and height
         
@@ -33,8 +56,11 @@ def interactive(df, label, show=False, save=False, colors=None,
             raise Exception ("colors need to have >= length as len(np.unique(df[label]))")
     
     # get bootstrap-wide statistics for consistency across frames
-    dim = np.max([np.max(np.abs(df['x1'])),np.max(np.abs(df['x2']))])
-    if df[label].dtype == np.float:
+    if dim is None:
+        dim = np.max([np.max(np.abs(df['x1'])),np.max(np.abs(df['x2']))])
+    
+    
+    if df[label].dtype == np.float: # define max and min values across all frames
         if vmin is None:
             vmin = np.min(df[label])
         if vmax is None:
@@ -57,17 +83,26 @@ def interactive(df, label, show=False, save=False, colors=None,
     #df_px['symbol'] = marker
     
     # make figure
-    if df[label].dtype == np.float:
-        fig = px.scatter(df_px, x='x1', y='x2', animation_frame="bootstrap_number", color=label, hover_name=label, title=title,
+    if df[label].dtype == np.float: # continuous labels
+        fig = px.scatter(df_px, x='x1', y='x2', animation_frame="bootstrap_number", animation_group="original_index", color=label, hover_name=label, title=title,
                    range_x=[-dim,dim], range_y=[-dim,dim], range_color=(vmin,vmax), opacity=alpha, width=width, height=height,
+                   labels={
+                         "x1": xlabel,
+                         "x2": ylabel,
+                         label: legend_title
+                     })
+    elif isinstance(colors, list): # if colors is specified for discrete labels           
+        fig = px.scatter(df_px, x='x1', y='x2', animation_frame="bootstrap_number", animation_group="original_index", color=label, hover_name=label, title=title,
+                   range_x=[-dim,dim], range_y=[-dim,dim], opacity=alpha, width=width, height=height,
                    color_discrete_map = color_dict,
                    labels={
                          "x1": xlabel,
                          "x2": ylabel,
                          label: legend_title
                      })
-    else:             
-        fig = px.scatter(df_px, x='x1', y='x2', animation_frame="bootstrap_number", color=label, hover_name=label, title=title,
+                     
+    else: # discrete labels (default colors)
+        fig = px.scatter(df_px, x='x1', y='x2', animation_frame="bootstrap_number", animation_group="original_index", color=label, hover_name=label, title=title,
                    range_x=[-dim,dim], range_y=[-dim,dim], opacity=alpha, width=width, height=height,
                    labels={
                          "x1": xlabel,
@@ -75,31 +110,51 @@ def interactive(df, label, show=False, save=False, colors=None,
                          label: legend_title
                      })
 
-    if isinstance(save, str):
+    if isinstance(save, str): # save as HTML
         if ".html" in save:
             fig.write_html(save)
         else:
             raise Exception("save needs to be .html file")
     
-    if show is True:
+    if show is True: # show figure
         fig.show()
     
     return(fig)
     
     
-def dynamic(df, label, save=False, get_frames=None, colors=None, cmap='viridis', width=4, height=4, dpi=500,
+def animated(df, label, save=False, get_frames=None, colors=None, cmap='viridis', width=4, height=4, dpi=500,
             xlabel=None, ylabel=None, title=None, title_fontsize=16, major_fontsize=16, minor_fontsize=14,
             vmin=None, vmax=None, marker="o", alpha=1.0, solid_cbar=True, show_legend=True, solid_legend=True,
-            legend_fontsize=12, **kwargs):
+            legend_fontsize=12, dim=None, **kwargs):
     '''
-    Generate dynamic visualization
-    
+    Generate dynamic visualization with animated modality
+        
     Arguments:
         df = pandas dataframe corresponding to output of boot.generate() 
         label = str, column in output for labeling/coloring visualization
         save = False or str, path to save the visualization (acceptable extensions are .gif and .avi)
         get_frames = None or list of integer indices to save frames for in folder called save.split(".")[0]
-        
+        colors = list of matplotlib color codes to use if labels are discrete
+        cmap = color map to use for continuous labels
+        width = width of matplotlib plot
+        height = height of matplotlib plot
+        dpi = dots per inch
+        xlabel = label of x-axis
+        ylabel = label of y-axis
+        title = title of plot
+        title_fontsize = fontsize for title
+        major_fontsize = fontsize for axis labels
+        minor_fontsize = fontsize for axis ticks
+        vmin = set value of vmin for continuous colorbar (default is min across all bootstrap frames)
+        vmax = set value of vmax for continuous colorbar (default is max across all bootstrap frames)
+        marker = marker symbol for plot
+        alpha = opacity between 0 and 1
+        solid_cbar = boolean, whether to set alpha=1 for color bar
+        show_legend = boolean, whether to show a legend
+        solid_legend = boolean, whether to set alpha=1 for legend markers
+        legend_fontsize = fontsize for legend
+        dim = x and y dimensions will +- dim in either direction; default is to take the maximum across all frames
+                
     Returns:
         images = list of matplotlib objects
     '''
@@ -109,7 +164,8 @@ def dynamic(df, label, save=False, get_frames=None, colors=None, cmap='viridis',
             raise Exception ("colors need to have >= length as len(np.unique(df[label]))")
     
     # get bootstrap-wide statistics for consistency across frames
-    dim = np.max([np.max(np.abs(df['x1'])),np.max(np.abs(df['x2']))])
+    if dim is None:
+        dim = np.max([np.max(np.abs(df['x1'])),np.max(np.abs(df['x2']))])
     if df[label].dtype == np.float:
         if vmin is None:
             vmin = np.min(df[label])
@@ -118,7 +174,7 @@ def dynamic(df, label, save=False, get_frames=None, colors=None, cmap='viridis',
     
     # generate list of matplotlib plots
     images = []
-    for boot_num in np.unique(df["bootstrap_number"]):
+    for boot_num in np.sort(np.unique(df["bootstrap_number"])):
     
         # get bootstrap results
         sub_df = df[df["bootstrap_number"] == boot_num].reset_index()
@@ -199,19 +255,23 @@ def dynamic(df, label, save=False, get_frames=None, colors=None, cmap='viridis',
     return(images)
     
     
-def static(df, label, show=False, save=False, colors=None, cmap='viridis', width=4, height=4, dpi=500,
+def stacked(df, label, show=False, save=False, colors=None, cmap='viridis', width=4, height=4, dpi=500,
             xlabel=None, ylabel=None, title=None, title_fontsize=16, major_fontsize=16, minor_fontsize=14,
             vmin=None, vmax=None, marker="o", alpha=None, solid_cbar=True, show_legend=True, solid_legend=True,
-            legend_fontsize=12, **kwargs):
+            legend_fontsize=12, dim=None, frame=None, return_fig=True, **kwargs):
     '''
-    Generate static visualization
-    
+    Generate dynamic visualization with stacked modality
+        
     Arguments:
         df = pandas dataframe corresponding to output of boot.generate() 
         label = str, column in output for labeling/coloring visualization
         show = True or False, whether to show the visualization
         save = False or str, path to save the visualization (acceptable extensions are .png, .jpg, .pdf, .eps, .tiff, ...
+        frame = None or if int, then shows only that bootstrap frame
+        return_fig = boolean, whether to return figure or not
         
+        See animated() for more details
+                
     Returns:
         fig = matplotlib object
     '''
@@ -221,7 +281,8 @@ def static(df, label, show=False, save=False, colors=None, cmap='viridis', width
             raise Exception ("colors need to have >= length as len(np.unique(df[label]))")
     
     # get bootstrap-wide statistics for consistency across frames
-    dim = np.max([np.max(np.abs(df['x1'])),np.max(np.abs(df['x2']))])
+    if dim is None:
+        dim = np.max([np.max(np.abs(df['x1'])),np.max(np.abs(df['x2']))])
     if df[label].dtype == np.float:
         if vmin is None:
             vmin = np.min(df[label])
@@ -233,6 +294,10 @@ def static(df, label, show=False, save=False, colors=None, cmap='viridis', width
         alpha = 0.2/(df.shape[0]/1000)
 
     fig = plt.figure(figsize=(width,height))
+    
+    # snapshot frame if requested
+    if isinstance(frame, int):
+        df = df[df['bootstrap_number']==frame]
     
     # continuous labels
     if df[label].dtype == np.float:
@@ -247,10 +312,10 @@ def static(df, label, show=False, save=False, colors=None, cmap='viridis', width
         for li, lab in enumerate(np.unique(df[label])):
             if colors is None:
                 plt.scatter(df[df[label] == lab]["x1"],df[df[label] == lab]["x2"],
-                            label=str(lab), marker=marker, alpha=alpha, edgecolors='none')
+                            label=str(lab), marker=marker, alpha=alpha, edgecolors='none', **kwargs)
             else:
                 plt.scatter(df[df[label] == lab]["x1"],df[df[label] == lab]["x2"],
-                            label=str(lab), c=colors[li], marker=marker, alpha=alpha, edgecolors='none')
+                            label=str(lab), c=colors[li], marker=marker, alpha=alpha, edgecolors='none', **kwargs)
 
         if show_legend is True:
             leg = plt.legend(loc='center left', bbox_to_anchor=(1, 0.5), fontsize=legend_fontsize)
@@ -278,8 +343,12 @@ def static(df, label, show=False, save=False, colors=None, cmap='viridis', width
         plt.savefig(save, dpi=dpi, bbox_inches = "tight")
     if show is True:
         plt.show()
+    else:
+        plt.close()
     
-    return(fig)
+    if return_fig is True:
+        return(fig)
+    
 
 
 def fig2img(fig, dpi):

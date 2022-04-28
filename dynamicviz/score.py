@@ -1,3 +1,13 @@
+"""
+Score module
+- Tools for computing variance score and stability score
+- Tools for computing concordance score and ensemble concordance score
+"""
+
+# author: Eric David Sun <edsun@stanford.edu>
+# (C) 2022 
+from __future__ import print_function, division
+
 from sklearn.decomposition import TruncatedSVD
 from sklearn.metrics import pairwise_distances
 from sklearn.neighbors import NearestNeighbors
@@ -14,47 +24,11 @@ import time
 
 
 
-# Stability score
-def stability (df, method="global", alpha=1.0, k=20, X_orig=None, neighborhoods=None, normalize_pairwise_distance=False,
-                include_original=True, num_jobs=None):
-    '''
-    Takes df (output dataframe of boot.generate()) and computes stability scores:
-    
-    Arguments:
-        df = pandas dataframe, output of boot.generate()
-        method = str, specifies the type of stability score to compute
-            "global" - compute stability score across the entire dataset
-            "random" - approximate global stability score by randomly selecting k "neighbors" for each observation
-            "local" - compute stability over k-nearest neighbors (specify k, defaults to 20)
-        alpha = float > 0, is the exponential paramter for stability score formula: stability = 1/(1+variance)^alpha
-            defaults to alpha=1.0
-        k = int, when method="local"
-        neighborhood = array or list of size n, with elements labeling neighborhoods
-        normalize_pairwise_distance = if True, then divide each set of d[i,j] by its mean before computing variance
-        include_original = if True, include the original (bootstrap_number=-1) embedding in calculating scores
-        num_jobs = None, -1, or >=1 int; if not None, runs multiprocessing with n_jobs, if n_jobs=-1, then uses all available
-        
-    Returns:
-        stability_scores = numpy array with stability score for each observation
-    '''
-    # check alpha > 0
-    if alpha <= 0:
-        raise Exception("alpha must be >= 0")
-    
-    mean_variance_distances = variance(df, method=method, k=k, X_orig=X_orig, neighborhoods=neighborhoods,
-                                        normalize_pairwise_distance=normalize_pairwise_distance,
-                                        include_original=include_original, num_jobs=num_jobs)
-
-    # compute stability score
-    stability_scores = stability_from_variance(mean_variance_distances, alpha)
-    
-    return(stability_scores)
-
-
+# Variance Score
 def variance (df, method="global", k=20, X_orig=None, neighborhoods=None, normalize_pairwise_distance=False,
                 include_original=True, num_jobs=None):
     '''
-    Takes df (output dataframe of boot.generate()) and computes variance scores:
+    Computes variances scores from the output dataframe (out) of boot.generate()
     
     Arguments:
         df = pandas dataframe, output of boot.generate()
@@ -62,14 +36,14 @@ def variance (df, method="global", k=20, X_orig=None, neighborhoods=None, normal
             "global" - compute stability score across the entire dataset
             "random" - approximate global stability score by randomly selecting k "neighbors" for each observation
             "local" - compute stability over k-nearest neighbors (specify k, defaults to 20)
-        k = int, when method="local"
+        k = int, when method is "local" or "random"; specifies the number of neighbors
         neighborhood = array or list of size n, with elements labeling neighborhoods
         normalize_pairwise_distance = if True, then divide each set of d[i,j] by its mean before computing variance
         include_original = if True, include the original (bootstrap_number=-1) embedding in calculating scores
         num_jobs = None, -1, or >=1 int; if not None, runs multiprocessing with n_jobs, if n_jobs=-1, then uses all available
         
     Returns:
-        mean_variance_distances = numpy array with variance score (mean variance in pairwise distance to neighborhood) for each observation
+        mean_variance_distances = numpy array with variance scores (mean variance in pairwise distance to neighborhood) for each observation
     '''
     # retrieve embeddings and bootstrap indices
     if include_original is True:
@@ -109,6 +83,14 @@ def variance (df, method="global", k=20, X_orig=None, neighborhoods=None, normal
 def stability_from_variance(mean_variance_distances, alpha):
     '''
     For alpha and mean_variance_distances, computes stability scores
+    
+    Arguments:
+        mean_variance_distances = list or array of variance scores (output of variance())
+        alpha = float > 0, is the exponential paramter for stability score formula: stability = 1/(1+variance)^alpha
+            defaults to alpha=1.0
+        
+    Returns:
+        stability_scores = numpy array with stability score for each observation
     '''
     # compute stability score
     print("Computing stability score with alpha="+str(alpha)+" ...")
@@ -119,13 +101,51 @@ def stability_from_variance(mean_variance_distances, alpha):
     return(stability_scores)
 
 
+# Stability score
+def stability (df, method="global", alpha=1.0, k=20, X_orig=None, neighborhoods=None, normalize_pairwise_distance=False,
+                include_original=True, num_jobs=None):
+    '''
+    Computes stability scores from the output dataframe (out) of boot.generate()
+    
+    Arguments:
+        alpha = float > 0, is the exponential paramter for stability score formula: stability = 1/(1+variance)^alpha
+            defaults to alpha=1.0
+        See variance() for more details
+        
+    Returns:
+        stability_scores = numpy array with stability score for each observation
+    '''
+    # check alpha > 0
+    if alpha <= 0:
+        raise Exception("alpha must be >= 0")
+    
+    mean_variance_distances = variance(df, method=method, k=k, X_orig=X_orig, neighborhoods=neighborhoods,
+                                        normalize_pairwise_distance=normalize_pairwise_distance,
+                                        include_original=include_original, num_jobs=num_jobs)
+
+    # compute stability score
+    stability_scores = stability_from_variance(mean_variance_distances, alpha)
+    
+    return(stability_scores)
+
+
 
 
 #@njit(parallel=True)
-def get_neighborhood_dict(method, k, keys, neighborhoods, X_orig):
+def get_neighborhood_dict(method, k, keys, neighborhoods=None, X_orig=None):
     '''
-    Numba parallelized
     Returns a neighborhood dictionary where keys are observation indices
+    
+    Arguments:
+        method = string specifier for the method for constructing neighborhoods ("global", "random", "local")
+            to specify a predefined/custom neighborhood, use the neighborhoods argument
+        k = integer specfiying size of neighborhood for "local" and "random" methods
+        keys = list/array of the key names (integers) to use in constructing the dictionary
+        neighborhoods = predefined neighborhoods [list of strings where same strings indicate observations in the same neighborhood]
+        X_orig = original X used to computing the bootstraps; used to determine local kNN relations
+        
+    Returns:
+        neighborhood_dict = dictionary with keys corresponding to observation indices and lists of their neighborhoods as values
     '''
     neighborhood_dict = dict()
     for key in keys:
@@ -167,8 +187,17 @@ def get_neighborhood_dict(method, k, keys, neighborhoods, X_orig):
 #@njit(parallel=True)
 def populate_distance_dict (neighborhood_dict, embeddings, bootstrap_indices):
     '''
-    Numba parallelized
     Returns dictionary with pairwise dictionaries for all observations[i][j]
+    
+    Arguments:
+        neighborhood_dict = dictionary with keys corresponding to observation indices and lists of their neighborhoods as values
+            this is the output of get_neighborhood_dict()
+        embeddings = list of nx2 DR visualization arrays [see outputs of boot.generate()]
+        bootstrap_indices = list of arrays, where each array is the bootstrap indices of that visualization [see outputs of boot.generate()]
+        
+    Returns:
+        dist_dict = two-level dictionary with first level corresponding to observation i and second level corresponding to observation j 
+                    the value corresponds to a list of Euclidean distances between observation i and j across all co-occurrences in the bootstrap visualizations
     '''
     dist_dict = dict()
     for key1 in neighborhood_dict.keys():
@@ -183,10 +212,7 @@ def populate_distance_dict (neighborhood_dict, embeddings, bootstrap_indices):
         for i in range(dist_mat.shape[0]):
             key1 = str(boot_idxs[i])
             neighbor_js = neighborhood_dict[key1]
-            #for j in range(dist_mat.shape[1]):
-            #    key2 = str(boot_idxs[j])
-            #    if int(key2) in neighbor_js:
-            #        dist_dict[key1][key2].append(dist_mat[i,j])
+
             for nj in neighbor_js:
                 key2 = str(nj)
                 js = [x[0] for x in np.argwhere(boot_idxs == nj)]
@@ -196,37 +222,58 @@ def populate_distance_dict (neighborhood_dict, embeddings, bootstrap_indices):
     return(dist_dict)
 
 #@njit(parallel=True)
-def compute_mean_distance(dist_dict, normalize_pairwise_distance):
+def compute_mean_distance(dist_dict, normalize_pairwise_distance=False):
     '''
     Computes mean pairwise distance across all (i,j)
+    
+    Arguments:
+        dist_dict = output of populate_distance_dict()
+        normalize_pairwise_distance = boolean; whether to normalize the distances between i and j by their mean
+    
+    Returns:
+        mean_pairwise_distance = the mean of all distances between any i and any j; used to normalize/scale the variance score
     '''
     all_distances = []
+    
     for n in range(len(dist_dict.keys())):
         key1 = list(dist_dict.keys())[n]
+        
         for key2 in dist_dict[key1].keys():
             distances = np.array(dist_dict[key1][key2])
+            
             if normalize_pairwise_distance is True: # perform additional local normalization before taking variance
-                distances = distances/np.nanmean(distances)
+                distances = distances/(np.nanmean(distances)) # recall: V(CX) = C^2 V(X)
             all_distances.append(np.nanmean(distances))
+            
     mean_pairwise_distance = np.nanmean(all_distances)
     
     return(mean_pairwise_distance)
 
 #@njit(parallel=True)
-def compute_mean_variance_distance(dist_dict, normalize_pairwise_distance, mean_pairwise_distance):
+def compute_mean_variance_distance(dist_dict, normalize_pairwise_distance=False, mean_pairwise_distance=1.0):
     '''
     For each (i,j) compute the variance across all distances.
     Then for each i, average across all var(i,j)
+    
+    Arguments:
+        dist_dict = output of populate_distance_dict()
+        normalize_pairwise_distance = boolean; whether to normalize the distances between i and j by their mean
+        mean_pairwise_distance = float, output of compute_mean_distance()
+    
+    Returns:
+        mean_variance_distances = list of variance scores [one for each observation]
     '''
     mean_variance_distances = np.ones(len(dist_dict.keys()))*np.inf
     
     for n in range(len(dist_dict.keys())):
         key1 = list(dist_dict.keys())[n]
         variances = []
+        
         for key2 in dist_dict[key1].keys():
             distances = np.array(dist_dict[key1][key2])
+            
             if normalize_pairwise_distance is True: # perform additional local normalization before taking variance
-                distances = distances/np.nanmean(distances)
+                distances = distances/(np.nanmean(distances))
                 
             variances.append(np.nanvar(distances / mean_pairwise_distance)) # normalize globally and compute variance
         
@@ -236,7 +283,7 @@ def compute_mean_variance_distance(dist_dict, normalize_pairwise_distance, mean_
 
 
         
-# Concordance scores
+### CONCORDANCE SCORES -- see our publication for mathematical details
 
 def average_recall_precision(X_orig, X_red, k_list, precomputed=[False, False], return_points=False):
     '''
@@ -465,7 +512,7 @@ def get_stretch(X_orig, X_red):
     '''
     Implemented according to Aupetit, 2007:
     
-    compression_i = [ u_i - min_k {u_k} ] / [ max_k {u_k} - min_k {u_k} ] 
+    stretch_i = [ u_i - min_k {u_k} ] / [ max_k {u_k} - min_k {u_k} ] 
     
     u_i = SUM_j D_ij^+  , D_ij^+ = max {-(D_orig_ij - D_red_ij), 0 }  -- D here being Euclidean distance matrix
     
@@ -542,6 +589,8 @@ def concordance(df, X_orig, method, k=None, bootstrap_number=-1):
         metrics = get_compression(X_orig, X_red)
     elif method == 'stretch':
         metrics = get_stretch(X_orig, X_red)
+    else:
+        raise Exception("method not recognized")
         
     return(metrics)
 
