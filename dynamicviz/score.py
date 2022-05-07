@@ -285,79 +285,6 @@ def compute_mean_variance_distance(dist_dict, normalize_pairwise_distance=False,
         
 ### CONCORDANCE SCORES -- see our publication for mathematical details
 
-def average_recall_precision(X_orig, X_red, k_list, precomputed=[False, False], return_points=False):
-    '''
-    X_orig, X_red are the n x p feature matrices
-        If precomputed[0] or precomputed[1] is True, then the corresponding X is a distance/dissimilarity matrix
-    k_list = list or array of k values that k1 and k2 can take on
-    '''
-
-    # INIT NEAREST NEIGHBORS
-    orig_nns = []
-    red_nns = []
-    for k1 in k_list:
-        # get k nearest neighbors in X_orig
-        if precomputed[0] is False:
-            nbrs = NearestNeighbors(n_neighbors=k1).fit(X_orig)
-        else:
-            nbrs = NearestNeighbors(n_neighbors=k1, metric='precomputed').fit(X_orig)
-        distances_orig, indices_orig = nbrs.kneighbors(X_orig)
-        orig_nns.append(indices_orig)
-    for k2 in k_list:
-        # get k nearest neighbors in X_red
-        if precomputed[0] is False:
-            nbrs = NearestNeighbors(n_neighbors=k2).fit(X_red)
-        else:
-            nbrs = NearestNeighbors(n_neighbors=k2, metric='precomputed').fit(X_red)
-        distances_red, indices_red = nbrs.kneighbors(X_red)
-        red_nns.append(indices_red)
-    
-    # AVERAGE PRECISION
-    precisions = []
-    for i in range(X_orig.shape[0]):
-        k1_precs = []
-        for i1, k1 in enumerate(k_list):
-            k2_precs = []
-            for i2, k2 in enumerate(k_list):
-                # get indices of nns
-                indices_orig = orig_nns[i1]
-                indices_red = red_nns[i2]
-                # compute average precision
-                numerator = len(list(set(indices_orig[i,1:]) & set(indices_red[i,1:]))) # ignore self neighbor (first index)
-                prec = numerator/k2
-                k2_precs.append(prec)
-            # Get best k2 precision for each k1
-            k1_precs.append(np.max(k2_precs))
-        # Get worst k1 precision
-        precisions.append(np.min(k1_precs))
-    avg_precision = np.mean(precisions)
-    
-    # AVERAGE RECALL
-    recalls = []
-    for i in range(X_orig.shape[0]):
-        k2_recs = []
-        for i2, k2 in enumerate(k_list):
-            k1_recs = []
-            for i1, k1 in enumerate(k_list):
-                # get indices of nns
-                indices_orig = orig_nns[i1]
-                indices_red = red_nns[i2]
-                # compute average precision
-                numerator = len(list(set(indices_orig[i,1:]) & set(indices_red[i,1:]))) # ignore self neighbor (first index)
-                rec = numerator/k1
-                k1_recs.append(rec)
-            # Get best k2 precision for each k1
-            k2_recs.append(np.max(k1_recs))
-        # Get worst k1 precision
-        recalls.append(np.min(k2_recs))
-    avg_recall = np.mean(recalls)
-    
-    if return_points is False:
-        return(avg_recall, avg_precision)
-    else:
-        return(recalls, precisions)
-
-
 def get_jaccard(X_orig, X_red, k, precomputed=[False, False]):
     '''
     Computes Jaccard coefficient at k for each point in X_orig and X_red
@@ -443,71 +370,6 @@ def get_mean_projection_error(X_orig, X_red):
     return(MPEs)
 
 
-def get_projection_precision_score(X_orig, X_red, k, precomputed=[False, False]):
-    '''
-    Computes projection precision score (PPS) based on Schreck 2007
-    
-    For k nearest neighbors:
-    
-    PPS_i(k) = SUM_j { || D[i,j]_orig(k) / ||D[i,]_orig|| - D[i,j]_red / ||D[i,]_red|| || }
-    
-    The final PPS_i are normalized by max(PPS_i) to get something between [0,1] and then reframed so 1 is best
-    '''
-    # INIT NEAREST NEIGHBORS
-    if precomputed[0] is False:
-        nbrs = NearestNeighbors(n_neighbors=k).fit(X_orig)
-    else:
-        nbrs = NearestNeighbors(n_neighbors=k, metric='precomputed').fit(X_orig)
-    distances_orig, indices_orig = nbrs.kneighbors(X_orig)
-    
-    if precomputed[0] is False:
-        nbrs = NearestNeighbors(n_neighbors=k).fit(X_red)
-    else:
-        nbrs = NearestNeighbors(n_neighbors=k, metric='precomputed').fit(X_red)
-    distances_red, indices_red = nbrs.kneighbors(X_red)
-    
-    # normalize distances
-    for i in range(distances_orig.shape[0]):
-        distances_orig[i,:] = distances_orig[i,:]/np.linalg.norm(distances_orig[i,:])
-        distances_red[i,:] = distances_red[i,:]/np.linalg.norm(distances_red[i,:])
-    
-    # compute projection errors and then PPS
-    projection_scores = np.abs(distances_orig-distances_red)
-    PPSs = np.sum(projection_scores, axis=1)
-    PPSs = PPSs/np.max(PPSs)
-    PPSs = 1-PPSs
-    
-    return(PPSs)
-
-
-def get_compression(X_orig, X_red):
-    '''
-    Implemented according to Aupetit, 2007:
-    
-    compression_i = [ u_i - min_k {u_k} ] / [ max_k {u_k} - min_k {u_k} ] 
-    
-    u_i = SUM_j D_ij^+  , D_ij^+ = max {D_orig_ij - D_red_ij , 0 }  -- D here being Euclidean distance matrix
-    
-    compressions reframed so 1 is best
-    '''
-    orig_distance = pairwise_distances(X_orig)
-    red_distance = pairwise_distances(X_red)
-    
-    # normalize distances
-    for i in range(orig_distance.shape[0]):
-        orig_distance[i,:] = orig_distance[i,:]/np.linalg.norm(orig_distance[i,:])
-        red_distance[i,:] = red_distance[i,:]/np.linalg.norm(red_distance[i,:])
-    
-    D_pos = orig_distance-red_distance
-    D_pos[D_pos<0] = 0
-    
-    U = np.sum(D_pos, axis=1)
-    compressions = (U-np.min(U))/(np.max(U)-np.min(U))
-    compressions = 1-compressions
-    
-    return(compressions)
-
-
 def get_stretch(X_orig, X_red):
     '''
     Implemented according to Aupetit, 2007:
@@ -544,8 +406,8 @@ def concordance(df, X_orig, method, k=None, bootstrap_number=-1):
     Arguments:
         df = pandas dataframe: output of boot.generate()
         X_orig = nxp numpy array that is the original data from which df was generated
-        method = str: 'precision', 'recall', 'pearson', 'spearman', 'jaccard', 'distortion',
-                 'mean_projection_error', 'projection_precision_score', 'compression', 'stretch'
+        method = str: 'spearman', 'jaccard', 'distortion',
+                 'mean_projection_error', 'stretch'
         k = int, neighborhood size to consider (jaccard, distortion, projection_precision_score, precision, recall)
         bootstrap_number = int, index of bootstrap to compute metrics for; defaults to -1 which is the original/unbootstrapped projection
         
@@ -565,15 +427,7 @@ def concordance(df, X_orig, method, k=None, bootstrap_number=-1):
     if k < 5:
         raise Exception('k needs to be >= 5 or number of observations in X is too small')
     
-    if method == 'precision':
-        recalls, metrics = average_recall_precision(X_orig, X_red, np.arange(5,k,5), return_points=True)
-    elif method == 'recall':
-        metrics, precisions = average_recall_precision(X_orig, X_red, np.arange(5,k,5), return_points=True)
-    elif method == 'pearson':
-        orig_distance = pairwise_distances(X_orig)
-        red_distance = pairwise_distances(X_red)
-        metrics = [pearsonr(orig_distance[i,:],red_distance[i,:])[0] for i in range(red_distance.shape[0])]
-    elif method == 'spearman':
+    if method == 'spearman':
         orig_distance = pairwise_distances(X_orig)
         red_distance = pairwise_distances(X_red)
         metrics = [spearmanr(orig_distance[i,:],red_distance[i,:])[0] for i in range(red_distance.shape[0])]
@@ -583,10 +437,6 @@ def concordance(df, X_orig, method, k=None, bootstrap_number=-1):
         metrics = get_distortion(X_orig, X_red, k)
     elif method == 'mean_projection_error':
         metrics = get_mean_projection_error(X_orig, X_red)
-    elif method == 'projection_precision_score':
-        metrics = get_projection_precision_score(X_orig, X_red, k)
-    elif method == 'compression':
-        metrics = get_compression(X_orig, X_red)
     elif method == 'stretch':
         metrics = get_stretch(X_orig, X_red)
     else:
@@ -613,8 +463,7 @@ def ensemble_concordance(df, X_orig, methods=None, k=None, bootstrap_number=-1, 
         pointwise_metrics_list = list of concordance score arrays corresponding to pointwise_metrics_labels
     '''
     if methods is None:
-        methods = ['pearson', 'spearman', 'jaccard', 'distortion', 'mean_projection_error',
-                                    'projection_precision_score', 'compression', 'stretch']
+        methods = ['spearman', 'jaccard', 'distortion', 'mean_projection_error', 'stretch']
     
     # compute individual metrics
     pointwise_metrics_list = []

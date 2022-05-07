@@ -20,72 +20,64 @@ S_X, S_y = make_s_curve(1000, random_state=0)
 S_y = pd.DataFrame(S_y, columns=["label"])
 
 
+# with parallelization
+try:
+    out = boot.generate(S_X, Y=S_y, method="tsne", B=4, save=False, random_seed=452, random_state=452, num_jobs=2)
+except:
+    print("Warning: Error encountered parallelization of boot.generate() -- ignore if only using one core")
+
 # without parallelization
 try:
-    out = boot.generate(S_X, Y=S_y, method="tsne", B=2, save="tests/outputs/test.csv", random_seed=452, random_state=452)
+    out = boot.generate(S_X, Y=S_y, method="tsne", B=4, save=False, random_seed=452, random_state=452)
 except:
     raise Exception("Error encountered in boot.generate")
 
 
-# with parallelization
-try:
-    out = boot.generate(S_X, Y=S_y, method="tsne", B=4, save="tests/outputs/test.csv", random_seed=452, random_state=452, num_jobs=2)
-except:
-    print("Warning: Error encountered parallelization of boot.generate() -- ignore if only using one core")
-
+# check output
+truth = pd.read_csv("tests/outputs/truth.csv")
+assert out["x1"].values[333] == truth["x1"].values[333], "Output dataframe does not match truth.csv"
+assert out["x2"].values[1111] == truth["x2"].values[1111], "Output dataframe does not match truth.csv"
 
 # make interactive visualization
-fig = viz.interactive(out, 'label', show=False, save='tests/outputs/test.html', alpha=0.5, legend_title="Cell type", dpi=150)
+try:
+    fig = viz.interactive(out, 'label', show=False, save=False, alpha=0.5, legend_title="Cell type", dpi=150)
+except:
+    print ("Warning: Error encountered for viz.interactive()")
 
+# make animated visualization
+try:
+    fig = viz.animated(out, 'label', save=False)
+except:
+    print ("Warning: Error encountered for viz.animated()")
 
-# UNCOMMENT BELOW AND FINISH WITH TRY HANDLING
-    # Also consider knowing some exact numerical value matching for testing
-
-# # continuous labels
-# fig = viz.animated(out, 'label', save='tests/outputs/test_continuous.gif', alpha=0.2, title="S curve", 
-                  # xlabel="t-SNE 1", ylabel="t-SNE 2", dpi=150, marker="x", s=20, solid_cbar=True)
-
-# # save particular frames
-# fig = viz.animated(out, 'label', save='tests/outputs/test_discrete.gif',
-                  # get_frames=[0,2,4])
-
-
-
-# fig = viz.stacked(out, 'label', show=False, save='tests/outputs/test.png',
-                 # xlabel="t-SNE 1", ylabel="t-SNE 2", dpi=150, marker="x", s=20, show_legend=True, solid_legend=True,
-                     # cmap='hot')
+# make stacked visualization
+try:
+    fig = viz.stacked(out, 'label', show=False, save=False,
+                    xlabel="t-SNE 1", ylabel="t-SNE 2", dpi=150, marker="x", s=20, show_legend=True, solid_legend=True, cmap='hot')
+except:
+    print ("Warning: Error encountered for viz.stacked()")
                     
-# # global
-# variance_scores = score.variance(out, method="global")
-
-# # global
-# variance_scores_normed = score.variance(out, method="global", normalize_pairwise_distance=True)
-
-# # random approximation to global (much faster)
-# variance_scores_random = score.variance(out, method="random", k=50)
-
-# # local
-# variance_scores_local = score.variance(out, method="local", X_orig=S_X, k=50)
-
-# plt.hist(variance_scores_local)
-# plt.show()
-
-# # compute stability score from variance score
-# stability_scores = score.stability_from_variance(variance_scores, alpha=20)
-
-
-# # pearson correlation
-# concordance_scores = score.concordance(out, S_X, method="pearson", bootstrap_number=-1)
-
-
-# # mean projection error (transformed)
-# concordance_scores2 = score.concordance(out, S_X, method="mean_projection_error", k=50, bootstrap_number=-1)
-
-# # ensemble concordance
-# ensemble_scores, concordance_scores_list = score.ensemble_concordance(out, 
-    # S_X, methods=['pearson', 'spearman', 'jaccard', 'distortion',
-                        # 'compression', 'stretch'],
-    # bootstrap_number=-1)
-
+# global variance score
+try:
+    variance_scores = score.variance(out, method="global")
+except:
+    print ("Warning: Error encountered for score.variance(method='global')")
+    
+# check variance scores
+truth = np.genfromtxt("tests/outputs/truth_variances.txt")
+assert variance_scores[333] == truth[333], "Variance scores do not match truth_variances.txt"
+    
+# random variance score
+try:
+    variance_scores = score.variance(out, method="random", k=50)
+except:
+    print ("Warning: Error encountered for score.variance(method='random')")
+    
+# concordance score test
+for method in ["spearman", "distortion", "jaccard", "mean_projection_error", "stretch"]:
+    try:
+        concordance_scores = score.concordance(out, S_X, method=method, k=50, bootstrap_number=-1)
+    except:
+        print ("Warning: Error encountered for score.concordance(method='"+method+"')")
 
 
