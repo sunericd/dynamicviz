@@ -53,7 +53,7 @@ def dimensionality_reduction(X, method, **kwargs):
     return(X_embedded)
 
 
-def bootstrap (X, method, B, sigma_noise=None, no_bootstrap=False, random_seed=None, num_jobs=None, use_n_pcs=False, **kwargs):
+def bootstrap (X, method, B, sigma_noise=None, no_bootstrap=False, random_seed=None, num_jobs=None, use_n_pcs=False, subsample=False, **kwargs):
     '''
     Creates n bootstrap data from X and creates a DR visualizastion for each of them.
     
@@ -78,20 +78,20 @@ def bootstrap (X, method, B, sigma_noise=None, no_bootstrap=False, random_seed=N
     # bootstrap DR
     if isinstance(num_jobs, int): # in parallel
         result = Parallel(n_jobs=num_jobs)(delayed(run_one_bootstrap)(X, method, sigma_noise, no_bootstrap,
-                                           random_seeded_sequence, b, use_n_pcs, **kwargs) for b in tqdm(range(B)))
+                                           random_seeded_sequence, b, use_n_pcs, subsample, **kwargs) for b in tqdm(range(B)))
         X_embedded_list = [x[0] for x in result]
         bootstrap_indices_list = [x[1] for x in result]
     else: # using only one core
         for b in tqdm(range(B)):
             X_embedded, boot_idxs = run_one_bootstrap(X, method, sigma_noise, no_bootstrap,
-                                           random_seeded_sequence, b, use_n_pcs, **kwargs)
+                                           random_seeded_sequence, b, use_n_pcs, subsample, **kwargs)
             X_embedded_list.append(X_embedded)
             bootstrap_indices_list.append(boot_idxs)
     
     return(X_embedded_list, bootstrap_indices_list)
 
 
-def run_one_bootstrap(X, method, sigma_noise=None, no_bootstrap=False, random_seeded_sequence=False, b=0, use_n_pcs=False, **kwargs):
+def run_one_bootstrap(X, method, sigma_noise=None, no_bootstrap=False, random_seeded_sequence=False, b=0, use_n_pcs=False, subsample=False, **kwargs):
     '''
     Method for generating one bootstrap X and one DR visualization of the bootstrap
     
@@ -105,16 +105,26 @@ def run_one_bootstrap(X, method, sigma_noise=None, no_bootstrap=False, random_se
         boot_idxs = numpy array indicating the bootstrap row indices
     '''
     # Create bootstrap X
-    if no_bootstrap is True: # don't bootstrap (will use intrinsic stochasticity of DR algorithm (if any) only)
-        boot_X = X.copy()
-        boot_idxs = np.arange(X.shape[0]) # set indices to be the original indices
-    elif random_seeded_sequence is not False: # use specified random_seeded_sequence to generate bootstrap X
-        seeded_rand2 = np.random.RandomState(random_seeded_sequence[b])
-        boot_idxs = seeded_rand2.randint(0,X.shape[0],X.shape[0])
-        boot_X = X.copy()[boot_idxs,:] 
-    else: # if no random_seeded_sequence, use default random process
-        boot_idxs = np.random.randint(0,X.shape[0],X.shape[0])
-        boot_X = X.copy()[boot_idxs,:]
+    if subsample is False:
+        if no_bootstrap is True: # don't bootstrap (will use intrinsic stochasticity of DR algorithm (if any) only)
+            boot_X = X.copy()
+            boot_idxs = np.arange(X.shape[0]) # set indices to be the original indices
+        elif random_seeded_sequence is not False: # use specified random_seeded_sequence to generate bootstrap X
+            seeded_rand2 = np.random.RandomState(random_seeded_sequence[b])
+            boot_idxs = seeded_rand2.randint(0,X.shape[0],X.shape[0])
+            boot_X = X.copy()[boot_idxs,:] 
+        else: # if no random_seeded_sequence, use default random process
+            boot_idxs = np.random.randint(0,X.shape[0],X.shape[0])
+            boot_X = X.copy()[boot_idxs,:]
+    # Subsample instead of bootstrapping
+    else:
+        if random_seeded_sequence is not False: # use specified random_seeded_sequence to generate subsample of X
+            seeded_rand2 = np.random.RandomState(random_seeded_sequence[b])
+            boot_idxs = seeded_rand2.choice(X.shape[0], subsample, replace=False)
+            boot_X = X.copy()[boot_idxs,:] 
+        else: # if no random_seeded_sequence, use default random process
+            boot_idxs = np.random.choice(X.shape[0], subsample, replace=False)
+            boot_X = X.copy()[boot_idxs,:]
         
     # add Gaussian noise to alleviate duplicate issues if specified
     if sigma_noise is not None:
@@ -132,7 +142,7 @@ def run_one_bootstrap(X, method, sigma_noise=None, no_bootstrap=False, random_se
 
 
 def generate(X, method, Y=None, B=0, sigma_noise=None, no_bootstrap=False, random_seed=None, save=False,
-             num_jobs=None, use_n_pcs=False, **kwargs):
+             num_jobs=None, use_n_pcs=False, subsample=False, **kwargs):
     '''
     Main method for generating aligned bootstrap visualizations, which are the input elements for dynamic visualization.
     
@@ -148,6 +158,7 @@ def generate(X, method, Y=None, B=0, sigma_noise=None, no_bootstrap=False, rando
         save = False or str, if str, path to save resulting Pandas dataframe as CSV
         num_jobs = None, -1, or >=1 int; if not None, runs multiprocessing with n_jobs, if n_jobs=-1, then uses all available
         use_n_pcs = False or int, specifying to apply PCA and keep to use_n_pcs components to use for method
+        subsample = False or int, specifying whether to subsample INSTEAD OF bootstrapping with integer corresponding to size of subsample to take
     
     Returns:
         output = Pandas dataframe with "x1", "x2", "bootstrap_number", "original_index" as columns, along with columns of Y
@@ -176,7 +187,7 @@ def generate(X, method, Y=None, B=0, sigma_noise=None, no_bootstrap=False, rando
     # bootstrap
     if B > 0:
         bootstrap_embedding_list, bootstrap_indices_list = bootstrap(X, method, B, sigma_noise, no_bootstrap, 
-                                                                    random_seed, num_jobs, use_n_pcs, **kwargs)
+                                                                    random_seed, num_jobs, use_n_pcs, subsample, **kwargs)
     # add bootstraps
     for i in range(len(bootstrap_embedding_list)):
         
