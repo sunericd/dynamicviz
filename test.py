@@ -35,8 +35,8 @@ except:
 
 # check output
 truth = pd.read_csv("tests/outputs/truth.csv")
-assert out["x1"].values[333] == truth["x1"].values[333], "Output dataframe does not match truth.csv"
-assert out["x2"].values[1111] == truth["x2"].values[1111], "Output dataframe does not match truth.csv"
+assert round(out["x1"].values[333],4) == round(truth["x1"].values[333],4), "Output dataframe does not match truth.csv"
+assert round(out["x2"].values[1111],4) == round(truth["x2"].values[1111],4), "Output dataframe does not match truth.csv"
 
 # make interactive visualization
 try:
@@ -65,7 +65,7 @@ except:
     
 # check variance scores
 truth = np.genfromtxt("tests/outputs/truth_variances.txt")
-assert variance_scores[333] == truth[333], "Variance scores do not match truth_variances.txt"
+assert round(variance_scores[333],4) == round(truth[333],4), "Variance scores do not match truth_variances.txt"
     
 # random variance score
 try:
