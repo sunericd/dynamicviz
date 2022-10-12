@@ -298,6 +298,8 @@ def stacked(df, label, show=False, save=False, colors=None, cmap='viridis', widt
     # snapshot frame if requested
     if isinstance(frame, int):
         df = df[df['bootstrap_number']==frame]
+    elif isinstance(frame, float):
+        df = df[df['bootstrap_number']==int(frame)]
     
     # continuous labels
     if df[label].dtype == np.float:

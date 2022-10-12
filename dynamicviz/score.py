@@ -26,7 +26,7 @@ import time
 
 # Variance Score
 def variance (df, method="global", k=20, X_orig=None, neighborhoods=None, normalize_pairwise_distance=False,
-                include_original=True, num_jobs=None):
+                include_original=True, return_times=False):
     '''
     Computes variances scores from the output dataframe (out) of boot.generate()
     
@@ -37,14 +37,17 @@ def variance (df, method="global", k=20, X_orig=None, neighborhoods=None, normal
             "random" - approximate global stability score by randomly selecting k "neighbors" for each observation
             "local" - compute stability over k-nearest neighbors (specify k, defaults to 20)
         k = int, when method is "local" or "random"; specifies the number of neighbors
-        neighborhood = array or list of size n, with elements labeling neighborhoods
+        neighborhoods = array or list of size n, with elements labeling neighborhoods
         normalize_pairwise_distance = if True, then divide each set of d[i,j] by its mean before computing variance
         include_original = if True, include the original (bootstrap_number=-1) embedding in calculating scores
-        num_jobs = None, -1, or >=1 int; if not None, runs multiprocessing with n_jobs, if n_jobs=-1, then uses all available
+        return_times = True or False; if not False, returns a dictionary of run times broken down by components as the second output
         
     Returns:
         mean_variance_distances = numpy array with variance scores (mean variance in pairwise distance to neighborhood) for each observation
     '''
+    # keep track of run times
+    rt_dict = {}
+    
     # retrieve embeddings and bootstrap indices
     if include_original is True:
         embeddings = [np.array(df[df["bootstrap_number"]==b][["x1","x2"]].values) for b in np.unique(df["bootstrap_number"])]
@@ -57,27 +60,38 @@ def variance (df, method="global", k=20, X_orig=None, neighborhoods=None, normal
     print("Setting up neighborhoods...")
     start_time = time.time()
     neighborhood_dict = get_neighborhood_dict(method, k, keys=np.unique(df["original_index"]), neighborhoods=neighborhoods, X_orig=X_orig)
-    print("--- %s seconds ---" % (time.time() - start_time))
+    neighborhood_time = time.time() - start_time
+    rt_dict["neighborhood"] = neighborhood_time
+    print("--- %s seconds ---" % neighborhood_time)
     
     # populate distance dict
     print("Populating distances...")
     start_time = time.time()
     dist_dict = populate_distance_dict(neighborhood_dict, embeddings, bootstrap_indices)
-    print("--- %s seconds ---" % (time.time() - start_time))
+    dist_time = time.time() - start_time
+    rt_dict["distances"] = dist_time
+    print("--- %s seconds ---" % dist_time)
     
     # compute mean pairwise distance for normalization
     print("Computing mean pairwise distance for normalization...")
     start_time = time.time()
     mean_pairwise_distance = compute_mean_distance(dist_dict, normalize_pairwise_distance)
-    print("--- %s seconds ---" % (time.time() - start_time))
+    norm_time = time.time() - start_time
+    rt_dict["normalization"] = norm_time
+    print("--- %s seconds ---" % norm_time)
 
     # compute variances
     print("Computing variance scores...")
     start_time = time.time()
     mean_variance_distances = compute_mean_variance_distance(dist_dict, normalize_pairwise_distance, mean_pairwise_distance)
-    print("--- %s seconds ---" % (time.time() - start_time))
+    var_time = time.time() - start_time
+    rt_dict["variance"] = var_time
+    print("--- %s seconds ---" % var_time)
     
-    return(mean_variance_distances)
+    if return_times is False:
+        return(mean_variance_distances)
+    else:
+        return(mean_variance_distances, rt_dict)
 
 
 def stability_from_variance(mean_variance_distances, alpha):
@@ -103,7 +117,7 @@ def stability_from_variance(mean_variance_distances, alpha):
 
 # Stability score
 def stability (df, method="global", alpha=1.0, k=20, X_orig=None, neighborhoods=None, normalize_pairwise_distance=False,
-                include_original=True, num_jobs=None):
+                include_original=True, return_times=False):
     '''
     Computes stability scores from the output dataframe (out) of boot.generate()
     
@@ -119,14 +133,22 @@ def stability (df, method="global", alpha=1.0, k=20, X_orig=None, neighborhoods=
     if alpha <= 0:
         raise Exception("alpha must be >= 0")
     
-    mean_variance_distances = variance(df, method=method, k=k, X_orig=X_orig, neighborhoods=neighborhoods,
-                                        normalize_pairwise_distance=normalize_pairwise_distance,
-                                        include_original=include_original, num_jobs=num_jobs)
+    if return_times is False:
+        mean_variance_distances = variance(df, method=method, k=k, X_orig=X_orig, neighborhoods=neighborhoods,
+                                            normalize_pairwise_distance=normalize_pairwise_distance,
+                                            include_original=include_original, return_times=return_times)
+    else:
+        mean_variance_distances, rt_dict = variance(df, method=method, k=k, X_orig=X_orig, neighborhoods=neighborhoods,
+                                            normalize_pairwise_distance=normalize_pairwise_distance,
+                                            include_original=include_original, return_times=return_times)
 
     # compute stability score
     stability_scores = stability_from_variance(mean_variance_distances, alpha)
     
-    return(stability_scores)
+    if return_times is False:
+        return(stability_scores)
+    else:
+        return(stability_scores, rt_dict)
 
 
 
@@ -420,6 +442,8 @@ def concordance(df, X_orig, method, k=None, bootstrap_number=-1):
     # shuffle X_orig to matching format
     boot_idxs = df[df["bootstrap_number"]==bootstrap_number]["original_index"].values
     X_orig = X_orig[boot_idxs,:]
+    
+    assert X_orig.shape[0] == X_red.shape[0], "Error: number of observations are not consistent"
     
     # set k to a globally relevant value if None
     if k is None:

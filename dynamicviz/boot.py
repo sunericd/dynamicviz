@@ -19,6 +19,7 @@ from tqdm import tqdm
 from joblib import Parallel, delayed
 import warnings
 warnings.filterwarnings("ignore")
+import time
 
 
 def dimensionality_reduction(X, method, **kwargs):
@@ -142,7 +143,7 @@ def run_one_bootstrap(X, method, sigma_noise=None, no_bootstrap=False, random_se
 
 
 def generate(X, method, Y=None, B=0, sigma_noise=None, no_bootstrap=False, random_seed=None, save=False,
-             num_jobs=None, use_n_pcs=False, subsample=False, **kwargs):
+             num_jobs=None, use_n_pcs=False, subsample=False, return_times=False, **kwargs):
     '''
     Main method for generating aligned bootstrap visualizations, which are the input elements for dynamic visualization.
     
@@ -159,6 +160,7 @@ def generate(X, method, Y=None, B=0, sigma_noise=None, no_bootstrap=False, rando
         num_jobs = None, -1, or >=1 int; if not None, runs multiprocessing with n_jobs, if n_jobs=-1, then uses all available
         use_n_pcs = False or int, specifying to apply PCA and keep to use_n_pcs components to use for method
         subsample = False or int, specifying whether to subsample INSTEAD OF bootstrapping with integer corresponding to size of subsample to take
+        return_times = True or False; if not False, returns a dictionary of run times broken down by components as the second output
     
     Returns:
         output = Pandas dataframe with "x1", "x2", "bootstrap_number", "original_index" as columns, along with columns of Y
@@ -184,11 +186,19 @@ def generate(X, method, Y=None, B=0, sigma_noise=None, no_bootstrap=False, rando
         for col in Y.columns:
             output[col] = Y[col].values
     
+    # keep track of run times
+    rt_dict = {}
+    
     # bootstrap
+    start_time = time.time()
     if B > 0:
         bootstrap_embedding_list, bootstrap_indices_list = bootstrap(X, method, B, sigma_noise, no_bootstrap, 
                                                                     random_seed, num_jobs, use_n_pcs, subsample, **kwargs)
+    bootstrap_time = time.time() - start_time
+    rt_dict["bootstrapped_DR"] = bootstrap_time
+    
     # add bootstraps
+    start_time = time.time()
     for i in range(len(bootstrap_embedding_list)):
         
         new_df = pd.DataFrame() # new df to merge onto original df
@@ -197,7 +207,7 @@ def generate(X, method, Y=None, B=0, sigma_noise=None, no_bootstrap=False, rando
         points = np.hstack((points, np.zeros(points.shape[0]).reshape(points.shape[0],1)))# append uniform 3rd dimension
         boot_idxs = bootstrap_indices_list[i]
         
-        # rigid alignment w/ 3d rotation
+        # rigid alignment w/ 3d rotation (Kabsch)
         ref_points = points0[boot_idxs,:]
         points[:,0] = points[:,0]-np.mean(points[:,0])
         points[:,1] = points[:,1]-np.mean(points[:,1])
@@ -217,12 +227,18 @@ def generate(X, method, Y=None, B=0, sigma_noise=None, no_bootstrap=False, rando
         
         # merge to original dataframe
         output = pd.concat([output, new_df], axis=0)
-
+    
+    align_time = time.time() - start_time
+    rt_dict["alignment_DR"] = align_time
+    
     # save output
     if save is not False:
         output.to_csv(save, index=False)
     
-    return(output)
+    if return_times is False:
+        return(output)
+    else:
+        return(output, rt_dict)
         
         
         

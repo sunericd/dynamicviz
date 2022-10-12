@@ -40,3 +40,5 @@ pip install -r requirements.txt
 To test that the installation is working correctly, you can use the Jupyter notebook ```tutorial.ipynb``` (requires installing Jupyter, instructions found [here](https://jupyter.org/install), and adding the conda environment we just created to the Jupyter notebook kernels, instructions found [here](https://medium.com/@nrk25693/how-to-add-your-conda-environment-to-your-jupyter-notebook-in-just-4-steps-abeab8b8d084)) or the test script ```test.py``` to check against expected outputs of the key methods.
 
 For the test data in the tutorial notebook, expected run times are under 5 minutes for interactive visualization and under 10 minutes for global variance score calculation.
+
+For Jupyter notebooks and Python scripts associated with our original publication, please refer to https://github.com/sunericd/dynamic-visualization-of-high-dimensional-data
