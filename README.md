@@ -42,3 +42,7 @@ To test that the installation is working correctly, you can use the Jupyter note
 For the test data in the tutorial notebook, expected run times are under 5 minutes for interactive visualization and under 10 minutes for global variance score calculation.
 
 For Jupyter notebooks and Python scripts associated with our original publication, please refer to https://github.com/sunericd/dynamic-visualization-of-high-dimensional-data
+
+If you find this code useful, please cite the following paper:
+
+Sun, E.D., Ma, R. & Zou, J. Dynamic visualization of high-dimensional data. Nat Comput Sci 3, 86–100 (2023). https://doi.org/10.1038/s43588-022-00380-4

@@ -221,6 +221,18 @@ def animated(df, label, save=False, get_frames=None, colors=None, cmap='viridis'
         plt.ylim(-dim,dim)
         plt.xlim(-dim,dim)
         plt.tight_layout()
+        
+        # save still frames if specified
+        if isinstance(get_frames, list):
+            if not os.path.exists(save.split(".")[0]):
+                os.makedirs(save.split(".")[0])
+            #for index in get_frames:
+            #    im = images[index]
+            #    im.save(os.path.join(save.split(".")[0],"frame"+str(index)+".pdf"))
+            if boot_num in get_frames:
+                plt.savefig(os.path.join(save.split(".")[0],"frame"+str(boot_num)+".pdf"), dpi=dpi)
+
+        # make plot into image
         im = fig2img(fig, dpi=dpi)
         images.append(im)
         plt.close()
@@ -243,14 +255,6 @@ def animated(df, label, save=False, get_frames=None, colors=None, cmap='viridis'
             video.release()
         else:
             raise Exception("save needs to be .gif or .avi file")
-    
-    # save still frames if specified
-    if isinstance(get_frames, list):
-        if not os.path.exists(save.split(".")[0]):
-            os.makedirs(save.split(".")[0])
-        for index in get_frames:
-            im = images[index]
-            im.save(os.path.join(save.split(".")[0],"frame"+str(index)+".png"))
     
     return(images)
     
