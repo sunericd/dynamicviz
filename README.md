@@ -4,6 +4,10 @@
 
 Python package for generating bootstrap visualizations of high-dimensional data. Great for assessing stability of visualizations and increasing robustness of interpretations. Also included are methods for computing variance scores along with classical concordance scores for quantifying the quality of a visualization.
 
+For a Quick Start guide, please refer to ``` tutorial.ipynb ```.
+
+![plot](./pipeline.png)
+
 ## Installation and setup
 
 ### Option 1: PyPI
