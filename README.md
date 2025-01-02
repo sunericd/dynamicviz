@@ -1,5 +1,7 @@
 # Dynamic visualization
 
+Sun, E.D., Ma, R. & Zou, J. Dynamic visualization of high-dimensional data. Nat Comput Sci 3, 86–100 (2023). https://doi.org/10.1038/s43588-022-00380-4
+
 ### Eric Sun
 
 Python package for generating bootstrap visualizations of high-dimensional data. Great for assessing stability of visualizations and increasing robustness of interpretations. Also included are methods for computing variance scores along with classical concordance scores for quantifying the quality of a visualization.
